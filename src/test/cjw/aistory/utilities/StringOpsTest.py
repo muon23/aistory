@@ -15,7 +15,7 @@ class MyTestCase(unittest.TestCase):
         s = "No matching ) parentheses ("
         before, between, after = parse_first_top_level_parentheses(s)
         print(f"Before: {before}\nBetween: {between}\nAfter: {after}")
-        self.assertIsNone(before)
+        self.assertEqual(before, s)
         self.assertIsNone(between)
         self.assertIsNone(after)
 

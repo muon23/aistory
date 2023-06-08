@@ -16,6 +16,9 @@ def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")
     It returns all Nones if nothing was matched
     """
 
+    if len(left) != len(right):
+        raise ValueError("Number of valid left parentheses does not match that of the right.")
+
     # Stack to store the positions of parentheses
     symbol_stack = []
     position_stack = []
@@ -46,7 +49,7 @@ def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")
 
     # Check if there are valid parentheses
     if start == -1 or end == -1:
-        return None, None, None
+        return s, None, None
 
     # Return substrings: before, between, and after the longest valid parentheses
     before = s[:start]
