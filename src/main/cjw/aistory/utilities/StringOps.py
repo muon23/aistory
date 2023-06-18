@@ -5,7 +5,7 @@ def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")
         -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Find the first top-level matching pair of parentheses.
-    (The original code was written by GPT-4 with a bug, and was debugged by CJ Wang.)
+    (The original code was written by GPT-4 with a bug, and was debugged by CJ Wang, demonstrating how AI and human shall work together. :) )
     :param s: A given string to parse
     :param left: Possible left parentheses.  Default "([{<".
     :param right: Possible matching right parentheses of the left ones.  Default ")]}>".

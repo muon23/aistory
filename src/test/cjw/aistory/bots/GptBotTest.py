@@ -1,11 +1,18 @@
 import asyncio
+import logging
+import os
 import unittest
 
 from cjw.aistory.bots.GptBot import GptBot
 from cjw.aistory.bots.Utterance import Utterance
 
 
-class MyTestCase(unittest.TestCase):
+class GptBotTest(unittest.TestCase):
+    logging.basicConfig(level=logging.DEBUG)
+
+    PROJECT = "aistory"
+    projectDir = os.getcwd().split(PROJECT)
+    projectDir = f"{projectDir[0]}{PROJECT}"
 
     def test_parseUtterance(self):
         utterances = Utterance.of(
@@ -28,20 +35,20 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(utterances[4].speaker, Utterance.NARRATOR)
         self.assertEqual(utterances[4].content, "The light dimmed.")
 
-    async def aprilStory(self):
+    def aprilStory(self):
         april: GptBot = GptBot.of(
             name="April",
             personas="April: April is a Ph.D. candidate of applied mathematics.  She is shy but friendly.",
-            directives="You are to answer and act as April.\n\n"
-                       "I'll write a brief outline of a section of the story with some key conversations. "
-                       "You shall rewrite my content from April's perspective.  "
-                       "For example: 'I ordered a cocktail and found a place to sit.'\n\n"
-                       "Feel free to expand and add details and twists to the story or rephrase the conversations.\n"
-                       "After you were done with the rewriting, make up April's responses.\n\n"
-                       "Special instructions to you will be enclosed in square brackets.  "
-                       "For example: [Make up a dialog for Max.]\n\n"
-                       "In your answer, put April's thought or her actions that only could see in square brackets.  "
-                       "For example: ['He is quite a gentleman', I thought]\n\n",
+            instruction="You are to answer and act as April.\n\n"
+                        "I'll write a brief outline of a section of the story with some key conversations. "
+                        "You shall rewrite my content from April's perspective.  "
+                        "For example: 'I ordered a cocktail and found a place to sit.'\n\n"
+                        "Feel free to expand and add details and twists to the story or rephrase the conversations.\n"
+                        "After you were done with the rewriting, make up April's responses.\n\n"
+                        "Special instructions to you will be enclosed in square brackets.  "
+                        "For example: [Make up a dialog for Max.]\n\n"
+                        "In your answer, put April's thought or her actions that only could see in square brackets.  "
+                        "For example: ['He is quite a gentleman', I thought]\n\n",
             background="You are in an evening networking event of an AI conference.",
             conversation="You ordered a cocktail, found an empty table, took a seat and opened up your laptop reading.  "
                          "A man approached you.\n"
@@ -126,13 +133,23 @@ class MyTestCase(unittest.TestCase):
             april.insertConversation(aprilResponses[i], creator=Utterance.Creator.AI)
             april.insertConversation(myInstructions[i])
 
+        return april
+
+    @classmethod
+    async def aprilRespond(cls, april: GptBot):
         responses = await april.respond()
         for r in responses:
             print(r)
 
     def test_respond(self):
+        april = self.aprilStory()
+        file = f"{self.projectDir}/data/unit_test/{self.__class__.__name__}/april.json"
+        april.save(file)
+
+        april2: GptBot = GptBot.load(file)
+
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.aprilStory())
+        loop.run_until_complete(self.aprilRespond(april2))
         loop.close()
 
 

@@ -1,5 +1,7 @@
+import json
+import os
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List
 
 from cjw.aistory.bots.Persona import Persona
 from cjw.aistory.bots.Utterance import Utterance
@@ -9,12 +11,14 @@ class Bot(ABC):
 
     def __init__(self, **kwargs):
         self.name: str = kwargs.get("name", None)
-        self.directives: str = kwargs.get("directives", "")
+        self.instruction: str = kwargs.get("instruction", "")
         self.background: str = kwargs.get("background", "")
         self.personas: List[Persona] = Persona.of(kwargs.get("personas", ""))
         self.scene: str = kwargs.get("scene", "")
         self.summaries: List[str] = kwargs.get("summaries", [])
         self.conversation: List[Utterance] = Utterance.of(kwargs.get("conversation", ""))
+        self.initialConversationEnd = len(self.conversation)
+        self.lastResponseEnd = -1
 
     @abstractmethod
     async def respond(self, **kwargs) -> List[Utterance]:
@@ -26,53 +30,88 @@ class Bot(ABC):
         """Get the name of the AI model"""
         pass
 
-    def insertConversation(self, line: str | Utterance, index: int = -1, creator: Utterance.Creator = Utterance.Creator.USER):
+    def insertConversation(
+            self,
+            contents: str | Utterance | List[str] | List[Utterance],
+            index: int = -1,
+            creator: Utterance.Creator = None
+    ):
         """
         Insert a line to the narratives
         :param index: Position of the lines in the narrative to insert after
-        :param line: The line to add
+        :param contents: The line to add
         :param creator: Who created the content, USER or AI?
         :return: None
         """
-        lenConversation = len(self.conversation)
-        if index > lenConversation:
-            index = lenConversation
+        length = len(self.conversation)
+        if index > length:
+            index = length
         elif index < 0:
-            index = lenConversation + 1 + index
-        if index < 0:
-            index = 0
+            index += length + 1
+            if index < 0:
+                index = 0
 
-        if isinstance(line, str):
-            utterances = Utterance.of(line, creator=creator)
-        elif isinstance(line, Utterance):
-            utterances = [line]
-        else:
-            raise ValueError(f"Unsupported data type {type(line)}")
+        self.conversation = self.conversation[:index] + Utterance.of(contents, creator=creator) + self.conversation[index:]
 
-        self.conversation = self.conversation[:index] + utterances + self.conversation[index:]
-
-    def removeConversation(self, index: int = -1) -> Optional[Utterance]:
+    def removeConversation(self, begin: int = -1, end: int = None) -> List[Utterance]:
         """
         Remove a line from the narratives
-        :param index: Position of the lines in the narrative to remove
+        :param begin: index of the first dialog to remove (default the last dialog)
+        :param end: index of the first element NOT to remove (default the end of the conversation)
         :return: The line that was removed.  None if the index is out of range.
         """
         try:
-            toRemove = self.conversation[index]
-            self.conversation.remove(toRemove)
+            toRemove = self.conversation[begin:end]
+            for c in toRemove:
+                self.conversation.remove(c)
+            self.lastResponseEnd -= len(toRemove)
             return toRemove
-        except IndexError:
-            return None
 
-    def replaceConversation(self, line: str | Utterance, index: int = -1):
-        self.removeConversation(index)
-        self.insertConversation(line, index)
+        except IndexError:
+            return []
+
+    def replaceConversation(
+            self,
+            contents: str | Utterance | List[str] | List[Utterance],
+            begin: int = -1,
+            end: int = None
+    ):
+        self.removeConversation(begin, end)
+        self.insertConversation(contents, begin)
+
+    def cleanConversation(self):
+        self.removeConversation(begin=self.initialConversationEnd)
+
+    def distilCleanConversation(self):
+        self.removeConversation(begin=0)
 
     @classmethod
-    @abstractmethod
-    def load(cls, file: str):
-        pass
+    def loadTo(cls, file: str, bot: "Bot"):
+        with open(file, "r") as fd:
+            data = json.load(fd)
 
-    @abstractmethod
+        bot.deserializeFrom(data)
+
+    def serialize(self):
+        trivialFields = ["name", "instruction", "background", "scene", "summaries"]
+        serialized = {f: self.__dict__[f] for f in trivialFields}
+        serialized["personas"] = [p.serialize() for p in self.personas]
+        serialized["conversation"] = [c.serialize() for c in self.conversation]
+        return serialized
+
+    def deserializeFrom(self, data: dict):
+        trivialFields = ["name", "instruction", "background", "scene", "summaries"]
+        for f in trivialFields:
+            self.__dict__[f] = data[f]
+
+        self.personas = [Persona.deserialize(p) for p in data["personas"]]
+        self.conversation = [Utterance.deserialize(c) for c in data["conversation"]]
+
     def save(self, file: str):
-        pass
+        directory = os.path.dirname(file)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        prettyJson = json.dumps(self.serialize(), indent=4)
+        with open(file, "w") as fd:
+            fd.write(prettyJson)

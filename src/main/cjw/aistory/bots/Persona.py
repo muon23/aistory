@@ -1,10 +1,13 @@
 import re
-from typing import Optional, List
+from typing import List
 
 
-class Persona:
+class Persona():
     @classmethod
     def of(cls, description: str) -> List['Persona']:
+        if not description:
+            return []
+
         personas = []
 
         for c in re.sub('\n+', '\n', description.strip()).split('\n'):
@@ -23,7 +26,7 @@ class Persona:
 
         return personas
 
-    def __init__(self, name: Optional[str], persona: str):
+    def __init__(self, name: str | None, persona: str):
         self.name = name
         self.persona = persona
 
@@ -33,4 +36,11 @@ class Persona:
 
     def add(self, description: str):
         self.persona += description
+
+    def serialize(self):
+        return self.__dict__
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "Persona":
+        return Persona(data["name"], data["persona"])
 
