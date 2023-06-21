@@ -77,7 +77,7 @@ class GptPortal:
 
             tries += 1
             if tries > retries:
-                raise self.ServiceNotAvailableError(f"OpenAI accesses failed after {tries - 1} tries.  Please try later")
+                raise self.ServiceNotAvailableError(f"OpenAI accesses failed after {tries} tries.  Please try later")
 
             logging.warning(f"OpenAI access failure (try {tries}).")
             time.sleep(self.__RETRY_INTERVAL)

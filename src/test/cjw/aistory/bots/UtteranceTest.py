@@ -1,5 +1,8 @@
 import unittest
 
+import jsonpickle
+
+from cjw.aistory.bots.Persona import Persona
 from cjw.aistory.bots.Utterance import Utterance
 
 
@@ -34,9 +37,26 @@ Bob: <unknown_purchase_date> I'm not sure when exactly I purchased it.
 Alice: No problem, Bob. Let me check your purchase history. [find_purchase_date] It appears you bought the toaster oven 10 months ago. Since it's still within the 1-year warranty period, we can replace the broken unit for you. Please provide your shipping address, and we'll begin the process. [shipping address] [end conversation]
 
 """
-        result = Utterance.of(text, delimiter='###', narrating=True)
+        result = Utterance.of(text, delimiter='###', parsing=False)
 
-        self.assertEqual(True, True)  # add assertion here
+        self.assertEqual(len(result), 4)
+
+    def test_serializing(self):
+        persona = Persona.of("Alice: Alice is in the wonderland.")
+        sp = jsonpickle.encode(persona[0])
+        print(sp)
+        persona2 = jsonpickle.decode(sp)
+        self.assertEqual(persona[0], persona2)
+
+        dialog = """
+        Alice: Where am I?
+        Bob: Where are you?
+        """
+        utterances = Utterance.of(dialog)
+        su = jsonpickle.encode(utterances)
+        print(su)
+        utterances2 = jsonpickle.decode(su)
+        self.assertEqual(utterances, utterances2)
 
 
 if __name__ == '__main__':

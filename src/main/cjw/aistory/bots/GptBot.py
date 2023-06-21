@@ -8,8 +8,9 @@ from cjw.aistory.utilities.GptPortal import GptPortal
 
 
 class GptBot(Bot):
-
     GptBot = TypeVar("GptBot")
+
+    logger = logging.getLogger(__name__)
 
     __MODEL_TRANSLATION = {
         "gpt3": "text-davinci-003",
@@ -20,23 +21,26 @@ class GptBot(Bot):
     @classmethod
     def of(cls, model: str = None, key: str = None, **kwargs: object) -> GptBot:
         if model is None:
-            return GptBot(model="default", key=key, **kwargs)
+            return GptBot(model="default", **kwargs).withKey(key)
         elif model.lower() in cls.__MODEL_TRANSLATION:
-            return GptBot(model=cls.__MODEL_TRANSLATION[model], key=key, **kwargs)
+            return GptBot(model=cls.__MODEL_TRANSLATION[model], **kwargs).withKey(key)
         elif model.lower() in cls.__MODEL_TRANSLATION.values():
-            return GptBot(model=model, key=key, **kwargs)
+            return GptBot(model=model, **kwargs).withKey(key)
         else:
             return None
 
-    def __init__(self, model: str | None, key: str | None = None, **kwargs):
+    def __init__(self, model: str | None, **kwargs):
         super().__init__(**kwargs)
 
         self.__model = model
         self.__portal = None
 
-        if model:
-            # If model is None, this object is created by the load() function
-            self.withKey(key)
+    def __eq__(self, other):
+        return (
+            isinstance(other, GptBot) and
+            super().__eq__(other) and
+            self.__model == other.__model
+        )
 
     def withKey(self, key: str = None) -> "GptBot":
         accessKey = key if key else os.environ.get("OPENAI_API_KEY")
@@ -51,12 +55,12 @@ class GptBot(Bot):
         if self.name:
             content += f"Your name is {self.name}.\n\n"
 
-        persona = "\n".join([str(p) for p in self.personas])
-        if persona:
-            content += f"{persona}\n\n"
+        personas = "\n".join([str(p) for p in self.personas])
+        if personas:
+            content += f"{personas}\n\n"
 
         if self.background:
-            content += f"Story background:\n{self.background}\n\n"
+            content += f"Background:\n{self.background}\n\n"
 
         if self.instruction:
             content += f"Instructions:\n{self.instruction}\n\n"
@@ -113,15 +117,15 @@ class GptBot(Bot):
 
         # For displaying in the logger for troubleshooting
         newConversation = messages if self.lastResponseEnd < 0 else messages[self.lastResponseEnd + 1:]
-        logging.info(f"Sending messages to OpenAI:")
+        self.logger.info(f"Sending messages to OpenAI:")
         for c in newConversation:
-            logging.info(f"role={c['role']}, content={c['content']}")
+            self.logger.info(f"role={c['role']}, content={c['content']}")
 
         responses = await self.__portal.chatCompletion(messages, temperature=0.9)
 
-        logging.info(f"Received responses from OpenAI:")
+        self.logger.info(f"Received responses from OpenAI:")
         for r in responses:
-            logging.info(f"role={r['role']}, content={r['content']}")
+            self.logger.info(f"role={r['role']}, content={r['content']}")
 
         utterances = []
         for r in responses:
@@ -143,22 +147,18 @@ class GptBot(Bot):
 
     @classmethod
     def load(cls, file: str) -> GptBot:
-        bot = GptBot(None)
+        return super().load(file)
 
-        super().loadTo(file, bot)
-        return bot
-
-    def serialize(self):
-        serialized = super().serialize()
-        serialized["__model"] = self.__model
-        return serialized
-
-    def deserializeFrom(self, data: dict) :
-        super().deserializeFrom(data)
-        self.__model = data["__model"]
+    def __getstate__(self):
+        """Clear GptPortal so we do not reveal OpenAI API key when serialized with pickle or jsonpickle"""
+        state = self.__dict__.copy()
+        state["_GptBot__portal"] = None
+        return state
 
     @classmethod
     def loadPlaygroundHistory(cls, file: str) -> GptBot:
         # TODO: Implement this
         pass
+
+
 

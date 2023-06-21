@@ -2,6 +2,7 @@ import copy
 from typing import List
 
 from cjw.aistory.bots.Utterance import Utterance
+from cjw.aistory.storyboard.TagExtractor import TagExtractor
 
 
 class StoryFork:
@@ -10,7 +11,8 @@ class StoryFork:
             cls,
             contents: str | Utterance | List[str] | List[Utterance],
             nextActors: List[str],
-            previous: "StoryFork" = None
+            previous: "StoryFork" = None,
+            tagExtractor: TagExtractor = None,
     ) -> "StoryFork":
 
         utterances = Utterance.of(contents)
@@ -20,7 +22,15 @@ class StoryFork:
         branches = None
 
         for u in utterances:
+            if tagExtractor:
+                tags, tagsRemoved = tagExtractor.extract(u.content)
+                u.content = tagsRemoved
+            else:
+                tags = {}
+
             story = StoryFork(u, nextActors=nextActors, branches=branches, previous=previous)
+            story.tags = tags
+
             if branches:
                 branches[0].previous = story
             branches = [story]
@@ -33,13 +43,27 @@ class StoryFork:
             utterance: Utterance,
             nextActors: List[str] = None,
             branches: List["StoryFork"] = None,
-            previous: "StoryFork" = None
+            previous: "StoryFork" = None,
     ):
         self.utterance = utterance
         self.branches = branches if branches else []
         self.nextActors = nextActors if nextActors else []
         self.previous = previous
         self.rephrases = []
+        self.tags = {}
+
+    def __str__(self):
+        return f"{self.utterance} {','.join(self.tags)}"
+
+    def getPreviousStory(self):
+        previously = []
+        fork = self
+        while fork:
+            previously.append(fork)
+            fork = fork.previous
+
+        previously.reverse()
+        return previously
 
     def getStoryLine(self, actor: str) -> List[Utterance]:
         storyLine = []
@@ -69,35 +93,15 @@ class StoryFork:
 
         return leads
 
-    def serialize(self) -> dict:
-        content = {
-            "utterance": self.utterance.serialize(),
-            "nextActors": self.nextActors
-        }
-        if self.rephrases:
-            content["rephrases"] = self.rephrases
-        if self.branches:
-            content["branches"] = [b.serialize() for b in self.branches]
-
-        return content
-
-    @classmethod
-    def deserialize(cls, data: dict) -> "StoryFork":
-        fork = StoryFork(
-            utterance=Utterance.deserialize(data["utterance"]),
-            nextActors=data["nextActors"],
-            branches=[cls.deserialize(b) for b in data["branches"]] if "branches" in data else [],
-        )
-        fork.rephrases = data["rephrases"] if "rephrases" in data else []
-
-        for b in fork.branches:
-            b.previous = fork
-
-        return fork
-
     def prettyList(self, indent="    ", indentLevel=0) -> str:
-        line = f"{indent * indentLevel}{self.utterance}",
-        rephrases = [f"{indent * indentLevel}({r})" for r in self.rephrases]
-        branches = [b.prettyList(indent=indent, indentLevel=indentLevel + 1) for b in self.branches]
+        indentation = indent * indentLevel
 
-        return '\n'.join(list(line) + rephrases + branches)
+        tags = f"{','.join(self.tags)} " if self.tags else ""
+        output = [f"{indentation}{tags}{self.utterance}"]
+
+        if self.rephrases:
+            output += [f"{indentation}({r})" for r in self.rephrases]
+        if self.branches:
+            output += [b.prettyList(indent=indent, indentLevel=indentLevel + 1) for b in self.branches]
+
+        return '\n'.join(output)

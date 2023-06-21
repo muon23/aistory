@@ -1,7 +1,8 @@
-import json
 import os
 from abc import ABC, abstractmethod
 from typing import List
+
+import jsonpickle
 
 from cjw.aistory.bots.Persona import Persona
 from cjw.aistory.bots.Utterance import Utterance
@@ -20,6 +21,18 @@ class Bot(ABC):
         self.initialConversationEnd = len(self.conversation)
         self.lastResponseEnd = -1
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, Bot) and
+            self.name == other.name and
+            self.instruction == other.instruction and
+            self.background == other.background and
+            self.personas == other.personas and
+            self.scene == other.scene and
+            self.conversation == other.conversation and
+            self.initialConversationEnd == other.initialConversationEnd
+        )
+
     @abstractmethod
     async def respond(self, **kwargs) -> List[Utterance]:
         """Make AI respond to the latest conversation"""
@@ -29,6 +42,12 @@ class Bot(ABC):
     def getModelName(self) -> str:
         """Get the name of the AI model"""
         pass
+
+    def addInstruction(self, instruction: str):
+        if self.instruction:
+            self.instruction += f"\n\n{instruction}"
+        else:
+            self.instruction = instruction
 
     def insertConversation(
             self,
@@ -85,33 +104,18 @@ class Bot(ABC):
     def distilCleanConversation(self):
         self.removeConversation(begin=0)
 
-    @classmethod
-    def loadTo(cls, file: str, bot: "Bot"):
-        with open(file, "r") as fd:
-            data = json.load(fd)
-
-        bot.deserializeFrom(data)
-
-    def serialize(self):
-        trivialFields = ["name", "instruction", "background", "scene", "summaries"]
-        serialized = {f: self.__dict__[f] for f in trivialFields}
-        serialized["personas"] = [p.serialize() for p in self.personas]
-        serialized["conversation"] = [c.serialize() for c in self.conversation]
-        return serialized
-
-    def deserializeFrom(self, data: dict):
-        trivialFields = ["name", "instruction", "background", "scene", "summaries"]
-        for f in trivialFields:
-            self.__dict__[f] = data[f]
-
-        self.personas = [Persona.deserialize(p) for p in data["personas"]]
-        self.conversation = [Utterance.deserialize(c) for c in data["conversation"]]
-
-    def save(self, file: str):
+    def save(self, file: str, indent=4):
         directory = os.path.dirname(file)
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        prettyJson = json.dumps(self.serialize(), indent=4)
+        pickled = jsonpickle.encode(self, indent=indent)
         with open(file, "w") as fd:
-            fd.write(prettyJson)
+            fd.write(pickled)
+
+    @classmethod
+    def load(cls, file: str) -> "Bot":
+        with open(file, "r") as fd:
+            data = fd.read()
+
+        return jsonpickle.decode(data)

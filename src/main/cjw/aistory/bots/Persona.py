@@ -2,7 +2,7 @@ import re
 from typing import List
 
 
-class Persona():
+class Persona(object):
     @classmethod
     def of(cls, description: str) -> List['Persona']:
         if not description:
@@ -34,13 +34,13 @@ class Persona():
         whose = f"{self.name}'s" if self.name else "Your"
         return f"{whose} persona: {self.persona}"
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, Persona) and
+            self.name == other.name and
+            self.persona == other.persona
+        )
+
     def add(self, description: str):
         self.persona += description
-
-    def serialize(self):
-        return self.__dict__
-
-    @classmethod
-    def deserialize(cls, data: dict) -> "Persona":
-        return Persona(data["name"], data["persona"])
 

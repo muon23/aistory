@@ -35,7 +35,8 @@ class GptBotTest(unittest.TestCase):
         self.assertEqual(utterances[4].speaker, Utterance.NARRATOR)
         self.assertEqual(utterances[4].content, "The light dimmed.")
 
-    def aprilStory(self):
+    @classmethod
+    def aprilStory(cls):
         april: GptBot = GptBot.of(
             name="April",
             personas="April: April is a Ph.D. candidate of applied mathematics.  She is shy but friendly.",
@@ -146,7 +147,9 @@ class GptBotTest(unittest.TestCase):
         file = f"{self.projectDir}/data/unit_test/{self.__class__.__name__}/april.json"
         april.save(file)
 
-        april2: GptBot = GptBot.load(file)
+        april2: GptBot = GptBot.load(file).withKey()
+
+        self.assertEqual(april, april2)
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.aprilRespond(april2))

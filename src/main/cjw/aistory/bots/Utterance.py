@@ -1,7 +1,6 @@
 import copy
+import enum
 import re
-from enum import Enum
-
 from typing import List
 
 from cjw.aistory.utilities import StringOps
@@ -11,7 +10,7 @@ class Utterance:
     NARRATOR = "NARRATOR"
     INSTRUCTION = "INSTRUCTION"
 
-    class Creator(Enum):
+    class Creator(enum.Enum):
         USER = 1
         AI = 2
 
@@ -57,12 +56,19 @@ class Utterance:
         if not defaultSpeaker:
             defaultSpeaker = Utterance.NARRATOR
         delimiter = kwargs.get("delimiter", "\n")
+        parsing = kwargs.get("parsing", True)
 
-        splitContents = [contents] if not delimiter else re.sub(f'({delimiter})+', delimiter, contents.strip()).split(delimiter)
+        splitContents = [contents] if not delimiter else re.sub(f'({delimiter})+', delimiter, contents.strip()).split(
+            delimiter)
 
         utterances = []
 
         for c in splitContents:
+            if not parsing:
+                # Not to parse the text.  Deliver as is.
+                utterances.append(Utterance(creator, defaultSpeaker, c))
+                continue
+
             # Check if it is 'Speaker: Say something or do something'.
             m = re.match(r'\s*([^:]+):(.+)\s*$', c)
             speaker, content = (m.group(1).strip(), m.group(2).strip()) if m else (defaultSpeaker, c)
@@ -73,7 +79,7 @@ class Utterance:
                 if before:
                     utterances.append(Utterance(creator, speaker, before.strip()))
                 if quoted:
-                    if creator == Utterance.Creator.USER:
+                    if creator == cls.Creator.USER:
                         utterances.append(Utterance(creator, Utterance.INSTRUCTION, quoted.strip()[1:-1]))
                     else:
                         utterances.append(Utterance(creator, speaker, quoted.strip()[1:-1], private=True))
@@ -105,23 +111,6 @@ class Utterance:
     def isByUser(self):
         return self.creator == self.Creator.USER
 
-    def serialize(self):
-        return {
-            "creator": self.creator.value,
-            "speaker": self.speaker,
-            "content": self.content,
-            "private": self.private,
-        }
-
-    @classmethod
-    def deserialize(cls, data: dict) -> "Utterance":
-        return Utterance(
-            Utterance.Creator(data["creator"]),
-            data["speaker"],
-            data["content"],
-            private=data.get("private", None),
-        )
-
     def __str__(self):
         if self.isCharacter():
             return f"{self.speaker}: {self.content}"
@@ -129,3 +118,12 @@ class Utterance:
             return f"[{self.content}]"
         else:
             return self.content
+
+    def __eq__(self, other):
+        return (
+                isinstance(other, Utterance) and
+                self.creator == other.creator and
+                self.speaker == other.speaker and
+                self.content == other.content and
+                self.private == other.private
+        )
