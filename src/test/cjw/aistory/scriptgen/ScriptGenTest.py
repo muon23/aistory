@@ -164,7 +164,8 @@ class ScriptGenTest(unittest.TestCase):
         alice = copy.copy(self.alice)
         alice.bot.personas = Persona.of(
             # "Alice: Sarcastic.  Alice hates her job and likes to tell mean jokes."
-            "Alice: Alice likes to speak in rhymes."
+            # "Alice: Alice likes to speak in rhymes."
+            "Alice: Alice likes to speak puns."
         )
 
         stage = Stage(actors=[alice, self.bob])

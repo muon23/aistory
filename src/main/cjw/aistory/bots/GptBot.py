@@ -10,7 +10,7 @@ from cjw.aistory.utilities.GptPortal import GptPortal
 class GptBot(Bot):
     GptBot = TypeVar("GptBot")
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__qualname__)
 
     __MODEL_TRANSLATION = {
         "gpt3": "text-davinci-003",

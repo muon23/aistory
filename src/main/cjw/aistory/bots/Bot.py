@@ -9,41 +9,78 @@ from cjw.aistory.bots.Utterance import Utterance
 
 
 class Bot(ABC):
+    """
+    Abstract base class representing a bot.
+    """
 
     def __init__(self, **kwargs):
-        self.name: str = kwargs.get("name", None)
-        self.instruction: str = kwargs.get("instruction", "")
-        self.background: str = kwargs.get("background", "")
-        self.personas: List[Persona] = Persona.of(kwargs.get("personas", ""))
-        self.scene: str = kwargs.get("scene", "")
-        self.summaries: List[str] = kwargs.get("summaries", [])
-        self.conversation: List[Utterance] = Utterance.of(kwargs.get("conversation", ""))
-        self.initialConversationEnd = len(self.conversation)
-        self.lastResponseEnd = -1
+        """
+        Initializes a bot instance.
+
+        Args:
+            **kwargs: Additional keyword arguments
+        """
+        self.name: str = kwargs.get("name", None)  # Name of the bot
+        self.instruction: str = kwargs.get("instruction", "")  # Instruction for the bot
+        self.background: str = kwargs.get("background", "")  # Background information for the bot
+        self.personas: List[Persona] = Persona.of(kwargs.get("personas", ""))  # List of personas for the bot
+        self.scene: str = kwargs.get("scene", "")  # Scene information for the bot
+        self.summaries: List[str] = kwargs.get("summaries", [])  # List of summaries for the bot
+        self.conversation: List[Utterance] = Utterance.of(kwargs.get("conversation", ""))  # Conversation history
+        self.initialConversationEnd = len(self.conversation)  # Index marking the end of the initial conversation
+        self.lastResponseEnd = -1  # Index marking the end of the last response
 
     def __eq__(self, other):
+        """
+        Compares two bot instances for equality.
+
+        Args:
+            other: The other bot instance to compare
+
+        Returns:
+            bool: True if the bot instances are equal, False otherwise
+        """
         return (
-            isinstance(other, Bot) and
-            self.name == other.name and
-            self.instruction == other.instruction and
-            self.background == other.background and
-            self.personas == other.personas and
-            self.scene == other.scene and
-            self.conversation == other.conversation and
-            self.initialConversationEnd == other.initialConversationEnd
+                isinstance(other, Bot) and
+                self.name == other.name and
+                self.instruction == other.instruction and
+                self.background == other.background and
+                self.personas == other.personas and
+                self.scene == other.scene and
+                self.conversation == other.conversation and
+                self.initialConversationEnd == other.initialConversationEnd
         )
 
     @abstractmethod
     async def respond(self, **kwargs) -> List[Utterance]:
-        """Make AI respond to the latest conversation"""
+        """
+        Abstract method for making the bot respond to the latest conversation.
+
+        Args:
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            List[Utterance]: List of utterances as the bot's response
+        """
         pass
 
     @abstractmethod
     def getModelName(self) -> str:
-        """Get the name of the AI model"""
+        """
+        Abstract method for getting the name of the AI model used by the bot.
+
+        Returns:
+            str: Name of the AI model
+        """
         pass
 
     def addInstruction(self, instruction: str):
+        """
+        Adds an instruction to the bot.
+
+        Args:
+            instruction (str): Instruction to add
+        """
         if self.instruction:
             self.instruction += f"\n\n{instruction}"
         else:
@@ -56,11 +93,12 @@ class Bot(ABC):
             creator: Utterance.Creator = None
     ):
         """
-        Insert a line to the narratives
-        :param index: Position of the lines in the narrative to insert after
-        :param contents: The line to add
-        :param creator: Who created the content, USER or AI?
-        :return: None
+        Inserts a line to the conversation.
+
+        Args:
+            contents (str | Utterance | List[str] | List[Utterance]): Content to add
+            index (int): Position to insert the content after (default: -1)
+            creator (Utterance.Creator): Creator of the content (default: None)
         """
         length = len(self.conversation)
         if index > length:
@@ -70,14 +108,22 @@ class Bot(ABC):
             if index < 0:
                 index = 0
 
-        self.conversation = self.conversation[:index] + Utterance.of(contents, creator=creator) + self.conversation[index:]
+        self.conversation = (
+                self.conversation[:index]
+                + Utterance.of(contents, creator=creator)
+                + self.conversation[index:]
+        )
 
     def removeConversation(self, begin: int = -1, end: int = None) -> List[Utterance]:
         """
-        Remove a line from the narratives
-        :param begin: index of the first dialog to remove (default the last dialog)
-        :param end: index of the first element NOT to remove (default the end of the conversation)
-        :return: The line that was removed.  None if the index is out of range.
+        Removes a line or a range of lines from the conversation.
+
+        Args:
+            begin (int): Index of the first dialog to remove (default: -1 for the last line of the conversation)
+            end (int): Index of the first element NOT to remove (default: None for the end of the conversation)
+
+        Returns:
+            List[Utterance]: The removed lines
         """
         try:
             toRemove = self.conversation[begin:end]
@@ -95,16 +141,37 @@ class Bot(ABC):
             begin: int = -1,
             end: int = None
     ):
+        """
+        Replaces a range of lines in the conversation with new content.
+
+        Args:
+            contents (str | Utterance | List[str] | List[Utterance]): New content to replace with
+            begin (int): Index of the first dialog to replace (default: -1 for the last line of the conversation)
+            end (int): Index of the first element NOT to replace (default: None for the end of the conversation)
+        """
         self.removeConversation(begin, end)
         self.insertConversation(contents, begin)
 
     def cleanConversation(self):
+        """
+        Removes all lines added after the initial conversation.
+        """
         self.removeConversation(begin=self.initialConversationEnd)
 
     def distilCleanConversation(self):
+        """
+        Removes all lines from the conversation.
+        """
         self.removeConversation(begin=0)
 
     def save(self, file: str, indent=4):
+        """
+        Saves the bot instance to a file.
+
+        Args:
+            file (str): File path
+            indent (int): Indentation level for JSON serialization (default: 4)
+        """
         directory = os.path.dirname(file)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -115,6 +182,15 @@ class Bot(ABC):
 
     @classmethod
     def load(cls, file: str) -> "Bot":
+        """
+        Loads a bot instance from a file.
+
+        Args:
+            file (str): File path
+
+        Returns:
+            Bot: Loaded bot instance
+        """
         with open(file, "r") as fd:
             data = fd.read()
 
