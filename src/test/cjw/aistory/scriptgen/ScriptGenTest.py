@@ -10,6 +10,7 @@ from cjw.aistory.scriptgen.Customer import Customer
 from cjw.aistory.scriptgen.Operator import Operator
 from cjw.aistory.storyboard.Stage import Stage
 from cjw.aistory.storyboard.StoryFork import StoryFork
+from src.test.cjw.aistory.storyboard.StageTest import StageTest
 
 
 class ScriptGenTest(unittest.TestCase):
@@ -91,6 +92,13 @@ class ScriptGenTest(unittest.TestCase):
         name="Alice",
         background=toaster,
         role="customer support",
+        instruction=(
+            "Resolutions that you are allowed to take:\n"
+            "- Return and refund if it was bought within 30 days\n"
+            "- Return and replace a broken unit if it was defected and under 1 year warranty\n"
+            "- If it was your company's mistake in the process, offer to give a coupon of less than 10% of the purchase price for the company's products."
+            "- If none of the above, say sorry to the customer and recommend a new model.\n\n"
+        ),
         conversation=(
             "[You picked up the call and greed the customer.  "
             "You do not yet know what product it is nor do you know what issue there is.]"
@@ -103,6 +111,35 @@ class ScriptGenTest(unittest.TestCase):
     )
 
     bob = Customer.of(name="Bob", background=toaster)
+
+    travel = "A customer wants to take a business trip."
+
+    carol = Operator.of(
+        name="Carol",
+        background=f"{travel}  Navan helps handle corporate traveling arrangements and expenses."
+                   f"Employees of a company are able make travel plan with Navan and charge to the company.",
+        role="agent",
+        company="Navan",
+        instruction=(
+            "You need to ensure the following:\n"
+            "- The customer is an authorized employee of the company he/she claims.\n"
+            "- His/her travel preferences are inline with the travel policies and restrictions of his/her company.\n"
+        ),
+        conversation=(
+            "[You picked up the call and greed the customer.]"
+        ),
+        protocols=[
+            "<authenticate_account_access>",
+            "<setup_a_new_account>",
+            "<obtain_payment_method>",
+        ]
+    )
+
+    dave = Customer.of(name="Dave", background=travel)
+
+    @classmethod
+    def mockOneAliceBobExchange(cls, loop, stage, aliceRephrases=1, bobBranches=1):
+        StageTest.mockOneAliceBobExchange(loop, stage, aliceRephrases, bobBranches)
 
     def test_basic(self):
 
@@ -121,35 +158,9 @@ class ScriptGenTest(unittest.TestCase):
         with patch("cjw.aistory.utilities.GptPortal.GptPortal.chatCompletion", new_callable=AsyncMock) as mockResponse:
             mockResponse.side_effect = mockGptResponse
 
-            loop.run_until_complete(stage.act(
-                actors=["Alice"],
-                alternatives=3,
-                narratingInResponse=False,
-            ))
-            print(stage.story.prettyList())
+            self.mockOneAliceBobExchange(loop, stage, 3, 4)
+            self.mockOneAliceBobExchange(loop, stage, 3, -3)
 
-            loop.run_until_complete(stage.act(
-                actors=["Bob"],
-                alternatives=4,
-                branchingAlternatives=True,
-                narratingInResponse=False,
-            ))
-            print(stage.story.prettyList())
-            print(f"Intents: {','.join(self.bob.knownIntents)}")
-
-            loop.run_until_complete(stage.act(
-                actors=["Alice"],
-                alternatives=3,
-                narratingInResponse=False,
-            ))
-            print(stage.story.prettyList())
-
-            loop.run_until_complete(stage.act(
-                actors=["Bob"],
-                alternatives=3,
-                # branchingAlternatives=True,
-                narratingInResponse=False,
-            ))
             print(stage.story.prettyList())
             print(f"Intents: {','.join(self.bob.knownIntents)}")
 
@@ -172,6 +183,25 @@ class ScriptGenTest(unittest.TestCase):
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(stage.act(actors=["Alice"]))
+        thread: List[StoryFork] = loop.run_until_complete(stage.randomThread(10))
+        for t in thread:
+            print(str(t))
+
+        loop.close()
+
+    def test_navan(self):
+
+        carol = copy.copy(self.carol)
+        # carol.bot.personas = Persona.of(
+        #     # "Carol: Sarcastic.  Alice hates her job and likes to tell mean jokes."
+        #     # "Carol: Alice likes to speak in rhymes."
+        #     # "Carol: Alice likes to speak puns."
+        # )
+
+        stage = Stage(actors=[carol, self.dave])
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(stage.act(actors=["Carol"]))
         thread: List[StoryFork] = loop.run_until_complete(stage.randomThread(10))
         for t in thread:
             print(str(t))

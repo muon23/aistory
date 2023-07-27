@@ -7,7 +7,7 @@ class Operator(Actor):
         role = kwargs.get("role", "operator")
         company = kwargs.get("company", "ABC")
 
-        instruction = kwargs.get("instruction", None)
+        instruction = kwargs.pop("instruction", None)
         if not instruction:
             instruction = (
                 "We are to make up the conversation between the operator and the customer. "
@@ -27,4 +27,4 @@ class Operator(Actor):
                 f"These are the available protocols: {', '.join(protocols)}\n\n"
             )
 
-        return Operator(name=name, instruction=instruction, **kwargs)
+        return Operator(name=name, instruction=instruction, narratingInResponse=False, **kwargs)

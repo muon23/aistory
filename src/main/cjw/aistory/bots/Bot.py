@@ -11,6 +11,15 @@ from cjw.aistory.bots.Utterance import Utterance
 class Bot(ABC):
     """
     Abstract base class representing a bot.
+
+    Attributes:
+        name (str): Name of the bot
+        instruction (str): Instruction for the bot
+        background (str): Background information about the environment where the bot is interacting
+        personas (List[Persona]): Personas for this bot and maybe other bots that it interacts with
+        scene (str): Information for the current scene where the bot is
+        summaries (List[str]): A list of summaries of the previous story line of the bot
+        conversation (List[Utterance]): The conversation so far in the current scene between the bot and others
     """
 
     def __init__(self, **kwargs):
@@ -20,15 +29,16 @@ class Bot(ABC):
         Args:
             **kwargs: Additional keyword arguments
         """
-        self.name: str = kwargs.get("name", None)  # Name of the bot
-        self.instruction: str = kwargs.get("instruction", "")  # Instruction for the bot
-        self.background: str = kwargs.get("background", "")  # Background information for the bot
-        self.personas: List[Persona] = Persona.of(kwargs.get("personas", ""))  # List of personas for the bot
-        self.scene: str = kwargs.get("scene", "")  # Scene information for the bot
-        self.summaries: List[str] = kwargs.get("summaries", [])  # List of summaries for the bot
-        self.conversation: List[Utterance] = Utterance.of(kwargs.get("conversation", ""))  # Conversation history
-        self.initialConversationEnd = len(self.conversation)  # Index marking the end of the initial conversation
-        self.lastResponseEnd = -1  # Index marking the end of the last response
+        self.name: str = kwargs.get("name", None)
+        self.instruction: str = kwargs.get("instruction", "")
+        self.background: str = kwargs.get("background", "")
+        self.personas: List[Persona] = Persona.of(kwargs.get("personas", ""))
+        self.scene: str = kwargs.get("scene", "")
+        self.summaries: List[str] = kwargs.get("summaries", [])
+        self.conversation: List[Utterance] = Utterance.of(kwargs.get("conversation", ""))
+
+        self._initialConversationEnd = len(self.conversation)
+        self._lastResponseEnd = -1
 
     def __eq__(self, other):
         """
@@ -48,7 +58,7 @@ class Bot(ABC):
                 self.personas == other.personas and
                 self.scene == other.scene and
                 self.conversation == other.conversation and
-                self.initialConversationEnd == other.initialConversationEnd
+                self._initialConversationEnd == other._initialConversationEnd
         )
 
     @abstractmethod
@@ -129,7 +139,7 @@ class Bot(ABC):
             toRemove = self.conversation[begin:end]
             for c in toRemove:
                 self.conversation.remove(c)
-            self.lastResponseEnd -= len(toRemove)
+            self._lastResponseEnd -= len(toRemove)
             return toRemove
 
         except IndexError:
@@ -156,7 +166,7 @@ class Bot(ABC):
         """
         Removes all lines added after the initial conversation.
         """
-        self.removeConversation(begin=self.initialConversationEnd)
+        self.removeConversation(begin=self._initialConversationEnd)
 
     def distilCleanConversation(self):
         """

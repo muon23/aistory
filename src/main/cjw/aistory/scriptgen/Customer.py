@@ -38,7 +38,7 @@ class Customer(Actor):
                 "(In the example, the operator has put your payment method into the system.)\n"
             )
 
-        return Customer(name=name, instruction=instruction, **kwargs)
+        return Customer(name=name, instruction=instruction, narratingInResponse=False, **kwargs)
 
     async def continueStory(
             self,

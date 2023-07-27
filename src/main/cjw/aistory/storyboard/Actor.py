@@ -1,6 +1,7 @@
 import logging
-from typing import TypeVar
+from typing import TypeVar, List
 
+from cjw.aistory.bots.Bot import Bot
 from cjw.aistory.bots.GptBot import GptBot
 from cjw.aistory.bots.Utterance import Utterance
 from cjw.aistory.storyboard.StoryFork import StoryFork
@@ -8,7 +9,19 @@ from cjw.aistory.storyboard.StoryFork import StoryFork
 
 class Actor:
     """
-    Class representing an actor in the story.
+    Represents an actor in the story with associated bot and conversation settings.
+
+    Attributes:
+        name (str): The name of the actor.
+        bot (GptBot): The bot associated with the actor.
+        stage: The stage the actor belongs to.
+        alternatives (int): The number of alternative responses expected.
+        alternativeDelimiter (str): The delimiter used for alternative responses.
+        branchingAlternatives (bool): Flag indicating whether to branch alternatives.
+        responseDelimiter (str): The delimiter used for response separation.
+        conversationEnd (List[str]): The list of conversation end markers.
+        narratingInResponse (bool): Flag indicating whether the bot should narrate in its responses.
+        tagExtractor: The tag extractor used to extract tags from responses.
     """
 
     Stage = TypeVar("Stage")
@@ -23,7 +36,7 @@ class Actor:
         Args:
             **kwargs: Additional keyword arguments
         """
-        self.name = kwargs.get("name")
+        self.name: str = kwargs.get("name")  # The name of the actor.
 
         persona = kwargs.pop("persona", None)
         if persona:
@@ -34,14 +47,14 @@ class Actor:
         if not bot:
             raise ValueError(f"Unsupported bot model {kwargs.get('model')}")
 
-        self.bot = bot
+        self.bot: Bot = bot
         self.stage = None
-        self.alternatives = kwargs.get("alternatives", 0)
-        self.alternativeDelimiter = kwargs.get("alternativeDelimiter", self.DEFAULT_ALTERNATIVE_DELIMITER)
-        self.branchingAlternatives = kwargs.get("branchingAlternatives", False)
-        self.responseDelimiter = kwargs.get("responseDelimiter", '\n')
-        self.conversationEnd = kwargs.get("conversationEnd", ["<end_conversation>"])
-        self.narratingInResponse = kwargs.get("narratingInResponse", True)
+        self.alternatives: int = kwargs.get("alternatives", 0)
+        self.alternativeDelimiter: str = kwargs.get("alternativeDelimiter", self.DEFAULT_ALTERNATIVE_DELIMITER)
+        self.branchingAlternatives: bool = kwargs.get("branchingAlternatives", False)
+        self.responseDelimiter: str = kwargs.get("responseDelimiter", '\n')
+        self.conversationEnd: List[str] = kwargs.get("conversationEnd", ["<end_conversation>"])
+        self.narratingInResponse: bool = kwargs.get("narratingInResponse", True)
         self.tagExtractor = kwargs.get("tagExtractor", None)
 
         alternativePrompt = self.__alternativePrompt(

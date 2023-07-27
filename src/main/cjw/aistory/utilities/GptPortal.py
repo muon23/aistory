@@ -1,3 +1,4 @@
+import copy
 import logging
 import time
 from typing import List, Dict, Callable
@@ -198,6 +199,8 @@ class GptPortal:
         if kwargs.get("model", "default") == "default":
             kwargs["model"] = self.__DEFAULT_MODELS["chatCompletion"]
 
+        multiple = "n" in kwargs
+
         access = kwargs.pop("access", self.access)
 
         request = {
@@ -215,15 +218,23 @@ class GptPortal:
             raise self.InvalidRequest(message)
 
         results = [r["text"].strip() for r in response["choices"]]
-        return results
+        return results if multiple else results[0]
 
-    async def chatCompletion(self, messages: List[dict], retries: int = 1, **kwargs) -> List[dict]:
+    async def chatCompletion(
+            self,
+            messages: List[dict],
+            retries: int = 1,
+            maxCompletion: int = 5,
+            **kwargs
+    ) -> List[dict]:
         """
-        Performs chat-based text completion using GPT-3.5 or -4 .
+        Performs chat-based text completion using GPT-3.5 or -4.
+        If GPT returns an incomplete response, repeat invoking until it is complete.
 
         Args:
             messages (List[dict]): List of messages in chat conversation
             retries (int): Number of retries (default: 1)
+            maxCompletion (int): If GPT responds incompletely due to length, try at most this to complete (default: 5)
             **kwargs: Additional keyword arguments
 
         Returns:
@@ -232,25 +243,57 @@ class GptPortal:
         if kwargs.get("model", "default") == "default":
             kwargs["model"] = self.__DEFAULT_MODELS["chatCompletion"]
 
-        access = kwargs.pop("access", self.access)
+        multiple = "n" in kwargs
 
-        request = {
-            "messages": messages,
-            **kwargs,
-        }
+        async def invokeChatComplete(_messages, forceSingle=False):
+            completionArgs = copy.copy(kwargs)
+            access = completionArgs.pop("access", self.access)
 
-        if access == "http":
-            response = await self.__usingHttp("chatCompletions", request, retries=retries)
-        elif access == "openai":
-            response = await self.__usingOpenAI(openai.ChatCompletion.acreate, request, retries=retries)
-        else:
-            message = f"Unknown access {access}"
-            self.logger.error(message)
-            raise self.InvalidRequest(message)
+            if forceSingle:
+                completionArgs.pop("n", 1)  # Discard 'n' for the default is 1
 
-        results = [r["message"] for r in response["choices"]]
-        results = [{"role": r.role, "content": r.content} for r in results]
-        return results
+            request = {
+                "messages": _messages,
+                **completionArgs,
+            }
+
+            if access == "http":
+                return await self.__usingHttp("chatCompletions", request, retries=retries)
+            elif access == "openai":
+                return await self.__usingOpenAI(openai.ChatCompletion.acreate, request, retries=retries)
+            else:
+                errorMsg = f"Unknown access {access}"
+                self.logger.error(errorMsg)
+                raise self.InvalidRequest(errorMsg)
+
+        response = await invokeChatComplete(messages)
+
+        completions = [{
+            "role": r["message"].role,
+            "content": r["message"].content,
+            "finish_reason": r["finish_reason"]
+        } for r in response["choices"]]
+
+        # Go through all the completions and see if any of them are not completed.  If so, call GPT again to complete them.
+        for completion in completions:
+            pieces = 1
+            while completion['finish_reason'] == "length":
+                conversation = messages + [
+                    {"role": "assistant", "content": completion["content"]},
+                    {"role": "user", "content": "[continue, but with limits]"},
+                ]
+
+                # Make the subsequent API call to continue the conversation.
+                response = await invokeChatComplete(conversation, forceSingle=True)
+                noChoice = response["choices"][0]
+                completion["finish_reason"] = noChoice["finish_reason"]
+                completion["content"] += ' ' + noChoice["message"].content
+
+                pieces += 1
+                if pieces > maxCompletion:
+                    break
+
+        return completions if multiple else completions[0]
 
     @classmethod
     def estimateTokens(cls, text: str) -> int:

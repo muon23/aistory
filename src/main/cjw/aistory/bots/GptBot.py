@@ -116,7 +116,7 @@ class GptBot(Bot):
         updateConversation = kwargs.get("updateConversation", True)
 
         # For displaying in the logger for troubleshooting
-        newConversation = messages if self.lastResponseEnd < 0 else messages[self.lastResponseEnd + 1:]
+        newConversation = messages if self._lastResponseEnd < 0 else messages[self._lastResponseEnd + 1:]
         self.logger.info(f"Sending messages to OpenAI:")
         for c in newConversation:
             self.logger.info(f"role={c['role']}, content={c['content']}")

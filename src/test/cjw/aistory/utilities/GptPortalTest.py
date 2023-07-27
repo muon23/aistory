@@ -1,7 +1,9 @@
 import asyncio
+import itertools
 import json
 import os
 import unittest
+from unittest.mock import patch, AsyncMock
 
 import requests
 
@@ -52,7 +54,8 @@ The Kagas: Kaga is an intelligent species who lived on Luytan b.  A Kaga looks l
         print(n)
         self.assertGreater(n, 500)
 
-    async def runChatCompletion(self):
+    @classmethod
+    async def runChatCompletion(cls, **kwargs):
         messages = [
             {
                 "role": "system",
@@ -75,13 +78,70 @@ The Kagas: Kaga is an intelligent species who lived on Luytan b.  A Kaga looks l
         print(f"Using key {key}")
         gpt = GptPortal.of(key)
 
-        responses = await gpt.chatCompletion(messages, temperature=0.8)
-        print(responses)
+        if "temperature" not in kwargs:
+            kwargs["temperature"] = 0.8
 
-    def test_chatCompletion(self):
+        responses = await gpt.chatCompletion(messages, **kwargs)
+        print(responses)
+        return responses
+
+    def test_chatCompletionRuns(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.runChatCompletion())
         loop.close()
+
+    def test_incompleteChatCompletion(self):
+        class Message:
+            def __init__(self, content):
+                self.role = "assistant"
+                self.content = content
+
+        currentPatch = 0
+
+        def finishBy(i: int, n: int):
+            return "length" if i < n else "stop"
+
+        N = 5
+        firstPatch = [
+            {
+                "choices": [{
+                    "message": Message(f"patch 0/{i}"),
+                    "finish_reason": finishBy(0, i)
+                } for i in range(N)]
+            },
+        ]
+        subsequentPatches = [
+            [
+                {
+                    "choices": [{
+                        "message": Message(f"patch {i}/{j}"),
+                        "finish_reason": finishBy(i, j)
+                    }]
+                }
+                for i in range(1, j+1)
+            ]
+            for j in range(1, N)
+        ]
+        responsePatches = firstPatch + list(itertools.chain.from_iterable(subsequentPatches))
+
+        async def mockGptResponse(func, request, **kwargs):
+            nonlocal currentPatch, responsePatches
+
+            response = responsePatches[currentPatch]
+            currentPatch += 1
+            return response
+
+        with patch("cjw.aistory.utilities.GptPortal.GptPortal._GptPortal__usingOpenAI", new_callable=AsyncMock) as mockResponse:
+            mockResponse.side_effect = mockGptResponse
+
+            loop = asyncio.get_event_loop()
+            result = loop.run_until_complete(self.runChatCompletion(n=5))
+            self.assertEqual(result[0]["content"], 'patch 0/0')
+            self.assertEqual(result[1]["content"], 'patch 0/1 patch 1/1')
+            self.assertEqual(result[2]["content"], 'patch 0/2 patch 1/2 patch 2/2')
+            self.assertEqual(result[3]["content"], 'patch 0/3 patch 1/3 patch 2/3 patch 3/3')
+            self.assertEqual(result[4]["content"], 'patch 0/4 patch 1/4 patch 2/4 patch 3/4 patch 4/4')
+            loop.close()
 
     def test_httpAccess(self):
         url = "https://api.openai.com/v1/chat/completions"
