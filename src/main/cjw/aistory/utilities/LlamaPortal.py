@@ -1,9 +1,9 @@
 from threading import Lock
+from typing import List
 
 import torch
 import transformers
 from transformers import AutoTokenizer
-from typing import List
 
 
 class LlamaPortal:

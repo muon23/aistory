@@ -11,17 +11,19 @@ from transformers import GPT2TokenizerFast
 class GptPortal:
     logger = logging.getLogger(__qualname__)  # Logger for logging messages
 
-    class AuthenticationError(Exception):  # Custom exception for authentication errors
+    class AuthenticationError(Exception):   # Custom exception for authentication errors
         pass
 
     class ServiceNotAvailableError(Exception):  # Custom exception for service availability errors
         pass
 
-    class TooManyTokensError(Exception):  # Custom exception for exceeding token limit errors
-        pass
+    class TooManyTokensError(Exception):    # Custom exception for exceeding token limit errors
+        def __init__(self, message):
+            super.__init__(message)
 
-    class InvalidRequest(Exception):  # Custom exception for invalid API requests
-        pass
+    class InvalidRequest(Exception):        # Unknown requests
+        def __init__(self, message):
+            super.__init__(message)
 
     __instances: Dict[str, "GptPortal"] = dict()  # Dictionary to store instances of GptPortal
     __tokenizer = None  # Tokenizer instance
@@ -99,9 +101,9 @@ class GptPortal:
                 raise self.AuthenticationError(f"{message} (incorrect or missing API keys).")
 
             except openai.error.InvalidRequestError as e:
-                message = f"Incorrect API request: {e}"
-                self.logger.error(message)
-                raise self.InvalidRequest(message)
+                message = f"Too many tokens: {e}"
+                self.logger.warning(message)
+                raise self.TooManyTokensError(message)
 
             except openai.error.RateLimitError as e:
                 self.logger.warning(f"OpenAI rate exceeds limit. Slowing down retries. {e}")
@@ -147,8 +149,8 @@ class GptPortal:
                             return results
 
                         elif response.status == 400:  # Incorrect request
-                            self.logger.error(f"Incorrect API request: {results['message']}")
-                            raise self.InvalidRequest(results["message"])
+                            self.logger.warning(f"Too many tokens: {results['message']}")
+                            raise self.TooManyTokensError(results["message"])
 
                         elif response.status == 401:  # Unauthorized
                             self.logger.error("Authentication failed: Unauthorized")
@@ -184,7 +186,7 @@ class GptPortal:
             self.logger.warning(f"GPT-3 access failure (try {tries}).")
             time.sleep(1)
 
-    async def completion(self, prompt: str, retries: int = 1, **kwargs) -> List[str]:
+    async def completion(self, prompt: str, retries: int = 1, **kwargs) -> List[str] | str:
         """
         Performs text completion using GPT-3.
 
@@ -226,7 +228,7 @@ class GptPortal:
             retries: int = 1,
             maxCompletion: int = 5,
             **kwargs
-    ) -> List[dict]:
+    ) -> List[dict] | dict:
         """
         Performs chat-based text completion using GPT-3.5 or -4.
         If GPT returns an incomplete response, repeat invoking until it is complete.
