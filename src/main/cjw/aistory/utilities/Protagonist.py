@@ -19,11 +19,24 @@ class Protagonist:
     def __init__(
             self,
             name: str,
-            gender: Gener,
+            gender: Gener | str,
             plurality: bool = False,
-            userPerspective: Perspective = Perspective.THIRD,
-            botPerspective: Perspective = Perspective.THIRD
+            userPerspective: Perspective | int = Perspective.THIRD,
+            botPerspective: Perspective | int = Perspective.THIRD,
     ):
+        if isinstance(gender, str):
+            if "female".startswith(gender.lower()):
+                gender = self.Gener.FEMALE
+            elif "male".startswith(gender.lower()):
+                gender = self.Gener.MALE
+            else:
+                raise ValueError(f"Unknown gender specification {gender}")
+
+        if isinstance(userPerspective, int):
+            userPerspective = self.Perspective(userPerspective)
+        if isinstance(botPerspective, int):
+            botPerspective = self.Perspective(botPerspective)
+
         self.name = name
         self.gender = gender
         self.plurality = plurality

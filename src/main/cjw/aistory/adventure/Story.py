@@ -18,23 +18,45 @@ class Story(ABC):
             self.message = f"Incompatible teller type {wrong} ({right} expected)"
 
     DEFAULT_MAX_PROMPT_TOKENS = 6500
+    DEFAULT_PRESERVED_FROM_CONDENSE = 3
 
     def __init__(
             self,
             teller: Teller,
+            instruction: str = None,
+            setting: str = None,
             maxPromptTokens: int = DEFAULT_MAX_PROMPT_TOKENS,
             condenseFolds: int = 3,
+            preservedFromCondense=DEFAULT_PRESERVED_FROM_CONDENSE,
+            condenseReview: bool = False,
     ):
         self.teller = teller
         self.condenser = Condenser(teller, condenseFolds)
         self.maxPromptTokens = maxPromptTokens
 
+        self.preservedFromCondense = preservedFromCondense
+        self.condenseReview = condenseReview
+
         self.workingPrompt = self.teller.createPrompt()
         self.archivedPrompt = self.teller.createPrompt()
 
+        self.workingPrompt.system(self._createInstruction(instruction))
+        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+
+        self.instruction = self._createInstruction(instruction)
+        self.workingPrompt.system(self.instruction)
+
+        self.setting = setting
+        if self.setting:
+            self.workingPrompt.system(setting, replace=False)
+
         self.condensingFromArchive = True
         self.uncondensedMessages = 0
-        self.currentPromptTokens = 0
+        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+
+    @abstractmethod
+    def _createInstruction(self, customized: str = None) -> str:
+        pass
 
     async def add(self, content: str, replace: bool = True) -> "Story":
         if replace and self.archivedPrompt.getRole(-1) == self.archivedPrompt.userRoleName:
@@ -97,7 +119,6 @@ class Story(ABC):
         return self
 
     async def delete(self, begin: int = -1, end: int = None) -> "Story":
-        self.archivedPrompt.delete(begin, end)
 
         workingBegin = begin - self.archivedPrompt.length() if begin >= 0 else begin
         if workingBegin < - self.uncondensedMessages:
@@ -109,6 +130,7 @@ class Story(ABC):
             self.uncondensedMessages -= max(0, workingEnd - workingBegin)
             self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
 
+        self.archivedPrompt.delete(begin, end)
         return self
 
     async def generate(self, redo: bool = True) -> str:
@@ -130,8 +152,45 @@ class Story(ABC):
         return response
 
     @abstractmethod
-    async def condense(self):
+    def _getStoryToCondense(self, prompt: ChatPrompt) -> str:
         pass
+
+    @abstractmethod
+    def _getFirstUncondensedIndex(self, prompt: ChatPrompt) -> int:
+        pass
+
+    async def condense(self):
+        prompt = self.archivedPrompt if self.condensingFromArchive else self.workingPrompt
+        story = self._getStoryToCondense(prompt)
+
+        try:
+            condensed = await self.condenser.condense(story)
+        except Teller.TooManyTokensError as e:
+            if not self.condensingFromArchive:
+                # Too many tokens even condensing from condensed.
+                raise Teller.TooManyTokensError(
+                    f"{e}\nConsider decreasing number of messages not to condense"
+                    f" (currently preservedFromCondense={self.preservedFromCondense})"
+                )
+
+            # From now on condense from the working version
+            self.condensingFromArchive = False
+            story = "\n\n".join(self.workingPrompt.getBotContents()[:-self.preservedFromCondense])
+            condensed = await self.condenser.condense(story)
+
+        preservedIndex = self._getFirstUncondensedIndex(prompt)
+
+        self.workingPrompt = self.teller.createPrompt()
+        self.workingPrompt.system(self.instruction)
+        if self.setting:
+            self.workingPrompt.system(self.setting)
+        self.workingPrompt.bot(condensed)
+        if self.condenseReview:
+            print(condensed)
+
+        self.workingPrompt.insert(prompt.messages[preservedIndex:])
+        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+        self.uncondensedMessages = -preservedIndex
 
     @abstractmethod
     def getStory(self) -> str:
@@ -162,13 +221,21 @@ class Story(ABC):
         if self.teller.getNumTokens(self.workingPrompt) > self.maxPromptTokens:
             await self.condense()
 
-    @abstractmethod
-    def setCondensed(self, condensed: str) -> "Story":
-        pass
+    def setCondensed(self, condensed: str):
+        index = 2 if self.setting else 1
 
-    @abstractmethod
+        if self.uncondensedMessages >= self.workingPrompt.length() - index:
+            condensed = {"role": self.workingPrompt.botRoleName, "content": condensed}
+            self.workingPrompt.insert([condensed], index)
+        else:
+            self.workingPrompt.replace(condensed, index)
+
     def getCondensed(self) -> str | None:
-        pass
+        index = 2 if self.setting else 1
+        if self.uncondensedMessages >= self.workingPrompt.length() - index:
+            return None
+        else:
+            return self.workingPrompt.getContent(index)
 
     def show(self, working: bool = True):
         if working:

@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 
 def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")]}") \
@@ -37,7 +37,7 @@ def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")
                         position_stack.pop()
 
                     symbol_stack.pop()
-                    start = position_stack.pop() # Include the opening parenthesis
+                    start = position_stack.pop()  # Include the opening parenthesis
                     end = i  # Include the closing parenthesis
 
                 if not symbol_stack:  # We are at the top level
@@ -57,3 +57,15 @@ def parse_first_top_level_parentheses(s: str, left: str = "([{", right: str = ")
     after = s[end + 1:]
 
     return before, between, after
+
+
+def join_with_conjunction(items: List[str], useAnd: bool = True) -> str:
+    conjunction = "and" if useAnd else "or"
+    if len(items) > 2:
+        return ', '.join(items[:-1] + [f"and {items[-1]}"])
+    elif len(items) > 1:
+        return f"{items[0]} {conjunction} {items[1]}"
+    elif items:
+        return items[0]
+    else:
+        return ""

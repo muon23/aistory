@@ -139,6 +139,11 @@ class StoryTest(unittest.TestCase):
             self.assertEqual(story.archivedPrompt.getRole(5), "test")
             self.assertTrue("response 16" in story.workingPrompt.getContent(1))  # Insert to a condensed text, re-condense triggered
 
+            # Test delete without end point
+            loop.run_until_complete(story.delete(15))
+            self.assertEqual(story.archivedPrompt.getContent(-1), story.workingPrompt.getContent(-1))
+            self.assertEqual(story.archivedPrompt.length(), 15)
+
             story.show()
 
 

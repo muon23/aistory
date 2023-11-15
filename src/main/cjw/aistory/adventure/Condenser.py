@@ -16,6 +16,7 @@ class Condenser:
         The length of the condensed result shall be at least {len(story.split()) // self.folds} words. 
         """
         prompt.system(instruction)
+        prompt.user(story)
         condensed = await self.teller.generate(prompt)
 
         return condensed if condensed else None

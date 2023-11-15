@@ -3,6 +3,7 @@ from typing import TypeVar
 
 from cjw.aistory.adventure.Story import Story
 from cjw.aistory.adventure.Teller import Teller
+from cjw.aistory.utilities.ChatPrompt import ChatPrompt
 from cjw.aistory.utilities.Protagonist import Protagonist
 
 
@@ -64,21 +65,22 @@ class PolishProgressStory(Story):
     def __init__(
             self,
             teller: Teller,
-            setting: str = None,
             protagonist2user=Protagonist.Perspective.THIRD,
             protagonist2bot=Protagonist.Perspective.THIRD,
-            preservedFromCondense=DEFAULT_PRESERVED_FROM_CONDENSE,
-            condenseReview: bool = False,
-            instruction: str = None,
             **kwargs
     ):
+        self.protagonist2user = protagonist2user
+        self.protagonist2bot = protagonist2bot
         super().__init__(teller, **kwargs)
 
+    def _createInstruction(self, customized: str = None) -> str:
         exampleProtagonist = Protagonist(
-            "April", Protagonist.Gener.FEMALE, userPerspective=protagonist2user, botPerspective=protagonist2bot
+            "April", Protagonist.Gener.FEMALE,
+            userPerspective=self.protagonist2user,
+            botPerspective=self.protagonist2bot
         )
 
-        self.instruction = instruction or self.DEFAULT_INSTRUCTION.format(
+        return customized or self.DEFAULT_INSTRUCTION.format(
             userRoleName=self.workingPrompt.userRoleName,
             botRoleName=self.workingPrompt.botRoleName,
             userPerspective=exampleProtagonist.getPerspective(Protagonist.View.USER),
@@ -92,70 +94,16 @@ class PolishProgressStory(Story):
             possessiveBotCap=exampleProtagonist.getPossessive(Protagonist.View.BOT, capitalize=True),
             reflexiveBot=exampleProtagonist.getReflexive(Protagonist.View.BOT),
             auxVerbPpBot=exampleProtagonist.getAuxVerbPp(Protagonist.View.BOT),
-
         )
-        self.workingPrompt.system(self.instruction)
 
-        self.setting = setting
-        if self.setting:
-            self.workingPrompt.system(setting, replace=False)
+    def _getStoryToCondense(self, prompt: ChatPrompt) -> str:
+        return "\n\n".join(prompt.getBotContents()[:-self.preservedFromCondense])
 
-        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
-        self.preservedFromCondense = preservedFromCondense
-        self.condenseReview = condenseReview
-
-    async def condense(self):
-        prompt = self.archivedPrompt if self.condensingFromArchive else self.workingPrompt
-        story = "\n\n".join(prompt.getBotContents()[:-self.preservedFromCondense])
-
-        try:
-            condensed = await self.condenser.condense(story)
-        except Teller.TooManyTokensError as e:
-            if not self.condensingFromArchive:
-                # Too many tokens even condensing from condensed.
-                raise Teller.TooManyTokensError(
-                    f"{e}\nConsider decreasing number of messages not to condense"
-                    f" (currently preservedFromCondense={self.preservedFromCondense})"
-                )
-
-            # From now on condense from the working version
-            self.condensingFromArchive = False
-            story = "\n\n".join(self.workingPrompt.getBotContents()[:-self.preservedFromCondense])
-            condensed = await self.condenser.condense(story)
-
+    def _getFirstUncondensedIndex(self, prompt: ChatPrompt) -> int:
         preservedIndex = 2 * -self.preservedFromCondense
         if prompt.getRole(preservedIndex) == prompt.botRoleName:
             preservedIndex -= 1
-
-        self.workingPrompt = self.teller.createPrompt()
-        self.workingPrompt.system(self.instruction)
-        if self.setting:
-            self.workingPrompt.system(self.setting)
-        self.workingPrompt.bot(condensed)
-        if self.condenseReview:
-            print(condensed)
-
-        self.workingPrompt.insert(prompt.messages[preservedIndex:])
-        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
-        self.uncondensedMessages = -preservedIndex
-
-    def setCondensed(self, condensed: str) -> "PolishProgressStory":
-        index = 2 if self.setting else 1
-
-        if self.uncondensedMessages >= self.workingPrompt.length() - index:
-            condensed = {"role": self.workingPrompt.botRoleName, "content": condensed}
-            self.workingPrompt.insert([condensed], index)
-        else:
-            self.workingPrompt.replace(condensed, index)
-
-        return self
-
-    def getCondensed(self) -> str | None:
-        index = 2 if self.setting else 1
-        if self.uncondensedMessages >= self.workingPrompt.length() - index:
-            return None
-        else:
-            return self.workingPrompt.getContent(index)
+        return preservedIndex
 
     def getStory(self) -> str:
         return "/n/n".join(self.archivedPrompt.getBotContents())
