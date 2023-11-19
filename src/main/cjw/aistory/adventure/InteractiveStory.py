@@ -1,4 +1,5 @@
-from typing import List
+import json
+from typing import List, TypeVar
 
 from cjw.aistory.adventure.Story import Story
 from cjw.aistory.adventure.Teller import Teller
@@ -8,6 +9,8 @@ from cjw.aistory.utilities.StringOps import join_with_conjunction
 
 
 class InteractiveStory(Story):
+    InteractiveStory = TypeVar("InteractiveStory")
+
     DEFAULT_INSTRUCTION = """
     The story shall look like being told by the {userRoleName}.
     The {userRoleName} will act as {actorNamesUser}{userPerspective}.  
@@ -108,7 +111,12 @@ class InteractiveStory(Story):
         )
 
     def _getStoryToCondense(self, prompt: ChatPrompt) -> str:
-        return "\n\n".join(prompt.contents()[:-self.preservedFromCondense])
+        if self.rewrite:
+            return "\n\n".join(prompt.getBotContents()[:-self.preservedFromCondense])
+        else:
+            return "\n\n".join(
+                prompt.getContents(lambda m: m["role"] != prompt.systemRoleName)[:-self.preservedFromCondense]
+            )
 
     def _getFirstUncondensedIndex(self, prompt: ChatPrompt) -> int:
         preservedIndex = 2 * -self.preservedFromCondense
@@ -117,4 +125,34 @@ class InteractiveStory(Story):
         return preservedIndex
 
     def getStory(self) -> str:
-        return "\n\n".join(self.archivedPrompt.contents()[:-self.preservedFromCondense])
+        return "\n\n".join(self.archivedPrompt.getContents()[:-self.preservedFromCondense])
+
+    def save(self, fileName: str, **kwargs):
+        properties = {
+            "userCharacters": [c.toJson() for c in self.userCharacters],
+            "botCharacters": [c.toJson() for c in self.botCharacters],
+            "rewrite": self.rewrite,
+        }
+        properties.update(**kwargs)
+
+        super().save(fileName, **properties)
+
+    @classmethod
+    async def load(cls, fileName: str, engine: Teller | InteractiveStory) -> "InteractiveStory":
+        if isinstance(engine, InteractiveStory):
+            engine = engine.teller
+
+        with open(fileName, "r") as fd:
+            properties = json.load(fd)
+
+            cls._checkCompatibility(properties, engine)
+
+            story = InteractiveStory(
+                engine,
+                userCharacters=[Protagonist.fromJson(c) for c in properties["userCharacters"]],
+                botCharacters=[Protagonist.fromJson(c) for c in properties["botCharacters"]],
+                rewrite=properties.get("rewrite", False)
+            )
+            await story._restore(properties)
+
+            return story

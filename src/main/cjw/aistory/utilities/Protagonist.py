@@ -140,4 +140,25 @@ class Protagonist:
         perspective = self.userPerspective.name if view == self.View.USER else self.botPerspective.name
         return perspective.capitalize() if capitalize else perspective.lower()
 
+    def toJson(self) -> dict:
+        return {
+            "name": self.name,
+            "gender": self.gender.value,
+            "plurality": self.plurality,
+            "userPerspective": self.userPerspective.value,
+            "botPerspective": self.botPerspective.value,
+        }
+
+    @classmethod
+    def fromJson(cls, properties: dict) -> "Protagonist":
+        userPerspective = properties.get("userPerspective", cls.Perspective.THIRD.value)
+        botPerspective = properties.get("botPerspective", cls.Perspective.THIRD.value)
+        return Protagonist(
+            properties["name"],
+            cls.Gener(properties["gender"]),
+            plurality=properties.get("plurality", False),
+            userPerspective=cls.Perspective(userPerspective),
+            botPerspective=cls.Perspective(botPerspective)
+        )
+
 

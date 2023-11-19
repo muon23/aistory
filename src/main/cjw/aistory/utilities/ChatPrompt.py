@@ -2,7 +2,7 @@ import bisect
 import functools
 import re
 from dataclasses import dataclass, field
-from typing import List, TypeVar, Dict
+from typing import List, TypeVar, Dict, Callable
 
 
 @functools.total_ordering
@@ -122,11 +122,11 @@ class ChatPrompt:
     def system(self, content: str, replace: bool = True) -> "ChatPrompt":
         return self.add(self.systemRoleName, content, replace)
 
-    def contents(self, role: str = None) -> List[str]:
-        return [m["content"] for m in self.messages if not role or m["role"] == role]
-
     def length(self) -> int:
         return len(self.messages)
+
+    def getContents(self, condition: Callable[[dict], bool] = lambda m: True) -> List[str]:
+        return [m["content"] for m in self.messages if condition(m)]
 
     def getContent(self, index: int) -> str | None:
         try:
@@ -141,13 +141,13 @@ class ChatPrompt:
             return None
 
     def getUserContents(self) -> List[str]:
-        return [m["content"] for m in self.messages if m["role"] == self.userRoleName]
+        return self.getContents(lambda m: m["role"] == self.userRoleName)
 
     def getBotContents(self) -> List[str]:
-        return [m["content"] for m in self.messages if m["role"] == self.botRoleName]
+        return self.getContents(lambda m: m["role"] == self.botRoleName)
 
     def getSystemContents(self) -> List[str]:
-        return [m["content"] for m in self.messages if m["role"] == self.systemRoleName]
+        return self.getContents(lambda m: m["role"] == self.systemRoleName)
 
     def spawn(self, initial: List[dict] = None) -> "ChatPrompt":
         if initial:
@@ -172,10 +172,10 @@ class ChatPrompt:
             except StopIteration:
                 raise IndexError(f"Bookmark {at} not found")
 
-        trailingMessages = self.messages[bookmark.index+1:]
-        self.messages = self.messages[:bookmark.index+1]
-        trailingBookmarks = self.bookmarks[cut+1:]
-        self.bookmarks = self.bookmarks[:cut+1]
+        trailingMessages = self.messages[bookmark.index + 1:]
+        self.messages = self.messages[:bookmark.index + 1]
+        trailingBookmarks = self.bookmarks[cut + 1:]
+        self.bookmarks = self.bookmarks[:cut + 1]
 
         sliced = self.spawn(initial=trailingMessages)
         for bm in trailingBookmarks:
@@ -227,4 +227,3 @@ class ChatPrompt:
                 head = re.sub(r"\s+", " ", m["content"].strip()[:SHOWN_CONTENT_LENGTH // 2]) + " ... "
                 tail = re.sub(r"\s+", " ", m["content"].strip()[-SHOWN_CONTENT_LENGTH // 2:])
             print(f"{i:3d}: ({m['role'][0]}) {head}{tail}")
-

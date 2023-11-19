@@ -19,11 +19,11 @@ class GptPortal:
 
     class TooManyTokensError(Exception):    # Custom exception for exceeding token limit errors
         def __init__(self, message):
-            super.__init__(message)
+            super().__init__(message)
 
     class InvalidRequest(Exception):        # Unknown requests
         def __init__(self, message):
-            super.__init__(message)
+            super().__init__(message)
 
     __instances: Dict[str, "GptPortal"] = dict()  # Dictionary to store instances of GptPortal
     __tokenizer = None  # Tokenizer instance
@@ -102,7 +102,7 @@ class GptPortal:
 
             except openai.error.InvalidRequestError as e:
                 message = f"Too many tokens: {e}"
-                self.logger.warning(message)
+                self.logger.info(message)
                 raise self.TooManyTokensError(message)
 
             except openai.error.RateLimitError as e:

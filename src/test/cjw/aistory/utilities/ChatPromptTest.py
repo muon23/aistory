@@ -36,7 +36,7 @@ class ChatPromptTest(unittest.TestCase):
 
         prompt.delete(10, 11)
         prompt.delete(0)
-        self.assertNotIn("user content", prompt.contents())
+        self.assertNotIn("user content", prompt.getContents())
 
     def test_bookmarks(self):
         messages = list(itertools.chain(*[[

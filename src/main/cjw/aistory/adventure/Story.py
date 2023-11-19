@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 from cjw.aistory.adventure.Condenser import Condenser
+from cjw.aistory.adventure.Paraphraser import Paraphraser
 from cjw.aistory.adventure.Teller import Teller
 from cjw.aistory.utilities.ChatPrompt import ChatPrompt
 
@@ -133,21 +134,28 @@ class Story(ABC):
         self.archivedPrompt.delete(begin, end)
         return self
 
-    async def generate(self, redo: bool = True) -> str:
+    async def generate(self, redo: bool = True, generated: str = None) -> str:
 
         if redo and self.archivedPrompt.getRole(-1) == self.archivedPrompt.botRoleName:
             # Remove the last generated message
             await self.delete(-1)
 
-        try:
-            response = await self.teller.generate(self.workingPrompt, redo=redo)
-        except Teller.TooManyTokensError:
-            await self.condense()
-            response = await self.teller.generate(self.workingPrompt, redo=redo)
+        if not generated:
+            try:
+                response = await self.teller.generate(self.workingPrompt, redo=redo)
+            except Teller.TooManyTokensError:
+                await self.condense()
+                response = await self.teller.generate(self.workingPrompt, redo=redo)
+        else:
+            response = generated
+            self.workingPrompt.bot(response, redo)
 
         self.archivedPrompt.bot(response, redo)
         self.uncondensedMessages += 1
         self.currentPromptTokens += self.teller.getNumTokens(response)
+
+        if self.currentPromptTokens > self.maxPromptTokens:
+            await self.condense()
 
         return response
 
@@ -158,6 +166,68 @@ class Story(ABC):
     @abstractmethod
     def _getFirstUncondensedIndex(self, prompt: ChatPrompt) -> int:
         pass
+
+    @abstractmethod
+    def getStory(self) -> str:
+        pass
+
+    def save(self, fileName: str, **kwargs):
+
+        properties = {
+            "type": self.__class__.__name__,
+            "teller": self.teller.getName(),
+            "story": self.archivedPrompt.messages,
+            # TODO: Also need to save condensed text and number of uncondensed messages
+            #  (archive may be too long to condense when loading)
+            "maxPromptTokens": self.maxPromptTokens,
+            "userRoleName": self.workingPrompt.userRoleName,
+            "botRoleName": self.workingPrompt.botRoleName,
+            "systemRoleName": self.workingPrompt.systemRoleName,
+            "instruction": self.instruction,
+            "setting": self.setting,
+            "preservedFromCondense": self.preservedFromCondense,
+        }
+        properties.update(**kwargs)
+
+        pretty = json.dumps(properties, indent=4)
+        with open(fileName, "w") as fd:
+            fd.write(pretty)
+
+    @classmethod
+    def _checkCompatibility(cls, properties: dict, engine: Teller):
+        storyType = properties.get("type", "??")
+        if storyType != cls.__name__:
+            raise cls.IncompatibleStoryTypeError(cls.__name__, storyType)
+
+        tellerType = properties.get("teller", "??")
+        if not engine.isCompatible(tellerType):
+            raise cls.IncompatibleTellerTypeError(engine.getName(), tellerType)
+
+    async def _restore(self, properties: dict):
+        self.instruction = properties.get("instruction", None)
+        self.setting = properties.get("setting", None)
+        self.maxPromptTokens = properties.get("maxPromptTokens", self.DEFAULT_MAX_PROMPT_TOKENS)
+
+        self.archivedPrompt = self.teller.createPrompt()
+        self.workingPrompt = self.teller.createPrompt()
+
+        self.workingPrompt.system(self.instruction)
+        if self.setting:
+            self.workingPrompt.system(self.setting, replace=False)
+
+        self.condensingFromArchive = True
+        self.uncondensedMessages = 0
+        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+
+        story = properties.get("story", [])
+        for m in story:
+            if m["role"] == self.archivedPrompt.userRoleName:
+                await self.add(m["content"], replace=False)
+            elif m["role"] == self.archivedPrompt.botRoleName:
+                await self.generate(generated=m["content"])
+            else:
+                self.archivedPrompt.system(m["content"], replace=False)
+                self.workingPrompt.system(m["content"], replace=False)
 
     async def condense(self):
         prompt = self.archivedPrompt if self.condensingFromArchive else self.workingPrompt
@@ -175,7 +245,7 @@ class Story(ABC):
 
             # From now on condense from the working version
             self.condensingFromArchive = False
-            story = "\n\n".join(self.workingPrompt.getBotContents()[:-self.preservedFromCondense])
+            story = self._getStoryToCondense(self.workingPrompt)
             condensed = await self.condenser.condense(story)
 
         preservedIndex = self._getFirstUncondensedIndex(prompt)
@@ -192,35 +262,6 @@ class Story(ABC):
         self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
         self.uncondensedMessages = -preservedIndex
 
-    @abstractmethod
-    def getStory(self) -> str:
-        pass
-
-    def save(self, fileName: str, **kwargs):
-
-        properties = {
-            "type": self.__class__.__name__,
-            "teller": self.teller.getName(),
-            "story": self.archivedPrompt.messages,
-            "maxPromptTokens": self.maxPromptTokens,
-            "userRoleName": self.workingPrompt.userRoleName,
-            "botRoleName": self.workingPrompt.botRoleName,
-            "systemRoleName": self.workingPrompt.systemRoleName,
-        }
-        properties.update(**kwargs)
-
-        pretty = json.dumps(properties, indent=4)
-        with open(fileName, "w") as fd:
-            fd.write(pretty)
-
-    async def _restore(self, properties: dict):
-        self.maxPromptTokens = properties.get("maxPromptTokens", self.DEFAULT_MAX_PROMPT_TOKENS)
-        self.archivedPrompt = self.teller.createPrompt().insert(properties.get("story", None))
-        self.workingPrompt.insert(properties.get("story", None))
-        self.uncondensedMessages = self.archivedPrompt.length()
-        if self.teller.getNumTokens(self.workingPrompt) > self.maxPromptTokens:
-            await self.condense()
-
     def setCondensed(self, condensed: str):
         index = 2 if self.setting else 1
 
@@ -236,6 +277,11 @@ class Story(ABC):
             return None
         else:
             return self.workingPrompt.getContent(index)
+
+    async def rework(self, instruction: str) -> str:
+        message = self.archivedPrompt.getContent(-1)
+        worker = Paraphraser(self.teller, message)
+        return await worker.rephrase(instruction=instruction)
 
     def show(self, working: bool = True):
         if working:

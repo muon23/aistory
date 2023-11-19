@@ -110,9 +110,8 @@ class PolishProgressStory(Story):
 
     def save(self, fileName: str, **kwargs):
         properties = {
-            "instruction": self.instruction,
-            "setting": self.setting,
-            "preservedFromCondense": self.preservedFromCondense,
+            "protagonist2user": self.protagonist2user.value,
+            "protagonist2bot": self.protagonist2bot.value,
         }
         properties.update(**kwargs)
 
@@ -126,17 +125,15 @@ class PolishProgressStory(Story):
         with open(fileName, "r") as fd:
             properties = json.load(fd)
 
-            storyType = properties.get("type", "??")
-            if storyType != cls.__name__:
-                raise cls.IncompatibleStoryTypeError(cls.__name__, storyType)
+            cls._checkCompatibility(properties, engine)
 
-            tellerType = properties.get("teller", "??")
-            if not engine.isCompatible(tellerType):
-                raise cls.IncompatibleTellerTypeError(engine.getName(), tellerType)
-
-            instruction = properties.get("instruction", None)
-            setting = properties.get("setting", None)
-            story = PolishProgressStory(engine, instruction=instruction, setting=setting)
+            protagonist2user = properties.get("protagonist2user", Protagonist.Perspective.THIRD.value),
+            protagonist2bot = properties.get("protagonist2bot", Protagonist.Perspective.THIRD.value),
+            story = PolishProgressStory(
+                engine,
+                protagonist2user=Protagonist.Perspective(protagonist2user),
+                protagonist2bot=Protagonist.Perspective(protagonist2bot),
+            )
             await story._restore(properties)
 
             return story
