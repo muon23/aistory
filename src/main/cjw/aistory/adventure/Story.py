@@ -177,8 +177,8 @@ class Story(ABC):
             "type": self.__class__.__name__,
             "teller": self.teller.getName(),
             "story": self.archivedPrompt.messages,
-            # TODO: Also need to save condensed text and number of uncondensed messages
-            #  (archive may be too long to condense when loading)
+            "uncondensedMessages": self.uncondensedMessages,
+            "condensedFromArchive": self.condensingFromArchive,
             "maxPromptTokens": self.maxPromptTokens,
             "userRoleName": self.workingPrompt.userRoleName,
             "botRoleName": self.workingPrompt.botRoleName,
@@ -187,6 +187,11 @@ class Story(ABC):
             "setting": self.setting,
             "preservedFromCondense": self.preservedFromCondense,
         }
+
+        condensed = self.getCondensed()
+        if condensed:
+            properties["condensed"] = condensed
+
         properties.update(**kwargs)
 
         pretty = json.dumps(properties, indent=4)
@@ -215,19 +220,32 @@ class Story(ABC):
         if self.setting:
             self.workingPrompt.system(self.setting, replace=False)
 
-        self.condensingFromArchive = True
-        self.uncondensedMessages = 0
-        self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+        self.condensingFromArchive = properties.get("condensingFromArchive", True)
+        self.uncondensedMessages = properties.get("uncondensedMessages", 0)
 
         story = properties.get("story", [])
-        for m in story:
-            if m["role"] == self.archivedPrompt.userRoleName:
-                await self.add(m["content"], replace=False)
-            elif m["role"] == self.archivedPrompt.botRoleName:
-                await self.generate(generated=m["content"])
-            else:
-                self.archivedPrompt.system(m["content"], replace=False)
-                self.workingPrompt.system(m["content"], replace=False)
+
+        condensed = properties.get("condensed", None)
+        if condensed:
+            # Condensed text exists, so add it and continued with uncondensed trailing messages
+            self.archivedPrompt.insert(story)
+            self.setCondensed(condensed)
+            uncondensed = story[-self.uncondensedMessages:]
+            self.workingPrompt.insert(uncondensed)
+            self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+
+        else:
+            # Condensed text does not exist, so add from archive one by one.
+            self.currentPromptTokens = self.teller.getNumTokens(self.workingPrompt)
+
+            for m in story:
+                if m["role"] == self.archivedPrompt.userRoleName:
+                    await self.add(m["content"], replace=False)
+                elif m["role"] == self.archivedPrompt.botRoleName:
+                    await self.generate(generated=m["content"])
+                else:
+                    self.archivedPrompt.system(m["content"], replace=False)
+                    self.workingPrompt.system(m["content"], replace=False)
 
     async def condense(self):
         prompt = self.archivedPrompt if self.condensingFromArchive else self.workingPrompt
@@ -253,7 +271,7 @@ class Story(ABC):
         self.workingPrompt = self.teller.createPrompt()
         self.workingPrompt.system(self.instruction)
         if self.setting:
-            self.workingPrompt.system(self.setting)
+            self.workingPrompt.system(self.setting, replace=False)
         self.workingPrompt.bot(condensed)
         if self.condenseReview:
             print(condensed)
@@ -280,7 +298,7 @@ class Story(ABC):
 
     async def rework(self, instruction: str) -> str:
         message = self.archivedPrompt.getContent(-1)
-        worker = Paraphraser(self.teller, message)
+        worker = Paraphraser(self.teller, message, setting=self.setting)
         return await worker.rephrase(instruction=instruction)
 
     def show(self, working: bool = True):

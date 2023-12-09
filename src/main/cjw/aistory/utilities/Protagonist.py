@@ -23,8 +23,11 @@ class Protagonist:
             plurality: bool = False,
             userPerspective: Perspective | int = Perspective.THIRD,
             botPerspective: Perspective | int = Perspective.THIRD,
+            persona: str = None
     ):
-        if isinstance(gender, str):
+        if gender is None:
+            gender = self.Gener.NONE
+        elif isinstance(gender, str):
             if "female".startswith(gender.lower()):
                 gender = self.Gener.FEMALE
             elif "male".startswith(gender.lower()):
@@ -38,10 +41,11 @@ class Protagonist:
             botPerspective = self.Perspective(botPerspective)
 
         self.name = name
-        self.gender = gender
+        self.gender: Protagonist.Gener = gender
         self.plurality = plurality
         self.userPerspective = userPerspective
         self.botPerspective = botPerspective
+        self.persona = persona
 
     def getSubjective(self, view: View = View.USER, capitalize: bool = False, useName: bool = False) -> str:
         perspective = self.userPerspective if view == self.View.USER else self.botPerspective
@@ -147,6 +151,7 @@ class Protagonist:
             "plurality": self.plurality,
             "userPerspective": self.userPerspective.value,
             "botPerspective": self.botPerspective.value,
+            "persona": self.persona
         }
 
     @classmethod
@@ -158,7 +163,8 @@ class Protagonist:
             cls.Gener(properties["gender"]),
             plurality=properties.get("plurality", False),
             userPerspective=cls.Perspective(userPerspective),
-            botPerspective=cls.Perspective(botPerspective)
+            botPerspective=cls.Perspective(botPerspective),
+            persona=properties.get("persona", None)
         )
 
 

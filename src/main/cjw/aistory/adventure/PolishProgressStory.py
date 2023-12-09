@@ -1,6 +1,8 @@
 import json
-from typing import TypeVar
+import re
+from typing import TypeVar, List
 
+from cjw.aistory.adventure.Paraphraser import Paraphraser
 from cjw.aistory.adventure.Story import Story
 from cjw.aistory.adventure.Teller import Teller
 from cjw.aistory.utilities.ChatPrompt import ChatPrompt
@@ -96,17 +98,57 @@ class PolishProgressStory(Story):
             auxVerbPpBot=exampleProtagonist.getAuxVerbPp(Protagonist.View.BOT),
         )
 
-    def _getStoryToCondense(self, prompt: ChatPrompt) -> str:
-        return "\n\n".join(prompt.getBotContents()[:-self.preservedFromCondense])
-
     def _getFirstUncondensedIndex(self, prompt: ChatPrompt) -> int:
         preservedIndex = 2 * -self.preservedFromCondense
         if prompt.getRole(preservedIndex) == prompt.botRoleName:
             preservedIndex -= 1
         return preservedIndex
 
+    @classmethod
+    def __extractNumberedItem(cls, toParse: str):
+        pattern = r'\d+\.\s+(.*)'
+        matches = re.findall(pattern, toParse)
+        itemsRemoved = re.sub(pattern, '', toParse)
+        return matches, itemsRemoved.strip()
+
+    @classmethod
+    def __extractNumberInSquareBrackets(cls, toParse: str):
+        pattern = r'\[(\d+)\]'
+        match = re.search(pattern, toParse)
+
+        # Check if a match was found
+        if match:
+            n = int(match.group(1))
+            cleaned = re.sub(pattern, '', toParse, count=1)
+            return n, cleaned.strip()
+        else:
+            # Return None if no match was found
+            return None, None
+
     def getStory(self) -> str:
-        return "/n/n".join(self.archivedPrompt.getBotContents())
+        return "\n\n".join(self.__makeStory(self.archivedPrompt.messages))
+
+    def _getStoryToCondense(self, prompt: ChatPrompt) -> str:
+        return "\n\n".join(self.__makeStory(prompt.messages[:-self.preservedFromCondense]))
+
+    def __makeStory(self, messages: List[dict]) -> List[str]:
+        story = []
+        choices = None
+        userRole = self.archivedPrompt.userRoleName
+        botRole = self.archivedPrompt.botRoleName
+        for message in messages:
+            if message["role"] == userRole and choices:
+                choice, _ = self.__extractNumberInSquareBrackets(message["content"])
+                if choice and 0 < choice <= len(choices):
+                    story.append(choices[choice-1])
+            elif message["role"] == botRole:
+                choices, content = self.__extractNumberedItem(message["content"])
+                story.append(content)
+
+        if messages[-1]["role"] == botRole and choices:
+            story.append("\n\n".join([f"{i+1}. {s}" for i, s in enumerate(choices)]))
+
+        return story
 
     def save(self, fileName: str, **kwargs):
         properties = {
@@ -127,8 +169,8 @@ class PolishProgressStory(Story):
 
             cls._checkCompatibility(properties, engine)
 
-            protagonist2user = properties.get("protagonist2user", Protagonist.Perspective.THIRD.value),
-            protagonist2bot = properties.get("protagonist2bot", Protagonist.Perspective.THIRD.value),
+            protagonist2user = properties.get("protagonist2user", Protagonist.Perspective.THIRD.value)
+            protagonist2bot = properties.get("protagonist2bot", Protagonist.Perspective.THIRD.value)
             story = PolishProgressStory(
                 engine,
                 protagonist2user=Protagonist.Perspective(protagonist2user),
@@ -142,4 +184,13 @@ class PolishProgressStory(Story):
         await super()._restore(properties)
         self.preservedFromCondense = properties.get("preservedFromCondense", self.DEFAULT_PRESERVED_FROM_CONDENSE)
 
+    async def rework(self, instruction: str) -> str:
+        reworkRole = self.archivedPrompt.getRole(-1)
+        if reworkRole != self.archivedPrompt.botRoleName:
+            return await super().rework(instruction)
+
+        userMessage = self.archivedPrompt.getContent(-2)
+        botMessage = self.archivedPrompt.getContent(-1)
+        worker = Paraphraser(self.teller, userMessage, botMessage)
+        return await worker.rephrase(instruction=instruction)
 

@@ -1,6 +1,7 @@
 import json
 from typing import List, TypeVar
 
+from cjw.aistory.adventure.Paraphraser import Paraphraser
 from cjw.aistory.adventure.Story import Story
 from cjw.aistory.adventure.Teller import Teller
 from cjw.aistory.utilities.ChatPrompt import ChatPrompt
@@ -33,12 +34,14 @@ class InteractiveStory(Story):
     __REFINE_INSTRUCTION = """
     The {botRoleName} shall respond in two parts:
     First, the {botRoleName} shall elaborate and rewrite upon the {userRoleName}'s outline.
-    Then, the {botRoleName} must act as {actorNamesBot} in response to {userRoleName}'s character{userActorPlural}{botPerspective}.
+    Then, the {botRoleName} must act as {actorNamesBot} in response to {userRoleName}'s character{userActorPlural}{botPerspective},
+    and make up the next situation for the {userRoleName} to respond.
     (The two parts shall flow fluidly; do not interrupt the parts with any notes or part numbers.)
     """
 
     __NO_REFINEMENT_INSTRUCTION = """
-    The {botRoleName} shall act as {actorNamesBot} and respond to the {userRoleName}'s character{userActorPlural}{botPerspective}.
+    The {botRoleName} shall act as {actorNamesBot} and respond to the {userRoleName}'s character{userActorPlural}{botPerspective},
+    and make up the next situation for the {userRoleName} to respond.
     """
 
     __REFINE_EXAMPLE = """As {subjective1Bot} slowly swing the door open, the room reveals itself to {objective1Bot}. 
@@ -156,3 +159,14 @@ class InteractiveStory(Story):
             await story._restore(properties)
 
             return story
+
+    async def rework(self, instruction: str) -> str:
+
+        reworkRole = self.archivedPrompt.getRole(-1)
+        if not self.rewrite or reworkRole != self.archivedPrompt.botRoleName:
+            return await super().rework(instruction)
+
+        userMessage = self.archivedPrompt.getContent(-2)
+        botMessage = self.archivedPrompt.getContent(-1)
+        worker = Paraphraser(self.teller, userMessage, botMessage)
+        return await worker.rephrase(instruction=instruction)
