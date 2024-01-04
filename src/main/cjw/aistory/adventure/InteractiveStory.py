@@ -52,6 +52,10 @@ class InteractiveStory(Story):
 
     DEFAULT_PRESERVED_FROM_CONDENSE = 3
 
+    @classmethod
+    def of(cls, **kwargs) -> "InteractiveStory":
+        return InteractiveStory(**kwargs)
+
     def __init__(
             self,
             teller: Teller,
@@ -128,7 +132,7 @@ class InteractiveStory(Story):
         return preservedIndex
 
     def getStory(self) -> str:
-        return "\n\n".join(self.archivedPrompt.getContents()[:-self.preservedFromCondense])
+        return "\n\n".join(self.archivedPrompt.getContents())
 
     def save(self, fileName: str, **kwargs):
         properties = {
